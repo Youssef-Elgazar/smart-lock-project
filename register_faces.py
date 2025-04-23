@@ -9,7 +9,20 @@ from tkinter import font as tkFont
 from tkinter import messagebox, ttk
 from PIL import Image, ImageTk
 
-# ========================== FACE REGISTER CLASS ==========================
+# ==================================================================
+# Index:
+#   - FACE REGISTER CLASS
+#   - PROCESS CAMERA FRAMES
+#   - DETECT FACES IN FRAME
+#   - START FACE CAPTURE
+#   - CAPTURE NEXT FACE
+#   - TRAIN THE RECOGNIZER
+#   - CLEAR ALL DATA
+#   - EXIT CLEANLY
+#   - RUN APP
+# ==================================================================
+
+# =========== FACE REGISTER CLASS ===========
 class Face_Register:
     def __init__(self):
         print("Initializing Face Register...")
@@ -24,13 +37,13 @@ class Face_Register:
         self.win.title("Face Register")
         self.win.geometry("1200x720")
 
-        # -------------------- LEFT: Camera Feed --------------------
+        # ---- LEFT: Camera Feed ----
         self.frame_left_camera = tk.Frame(self.win)
         self.label = tk.Label(self.frame_left_camera)  # Label to show video frames
         self.label.pack()
         self.frame_left_camera.pack(side=tk.LEFT, padx=10, pady=10)
 
-        # -------------------- RIGHT: Controls --------------------
+        # ---- RIGHT: Controls ----
         self.frame_right_info = tk.Frame(self.win)
 
         # Title
@@ -42,19 +55,14 @@ class Face_Register:
         self.input_name.pack(pady=5)
 
         # Buttons
-        tk.Button(self.frame_right_info, text="Capture Face", command=self.capture_multiple_faces,
-                  font=("Arial", 12), bg="green", fg="white").pack(pady=5)
-        tk.Button(self.frame_right_info, text="Clear Data", command=self.clear_data,
-                  font=("Arial", 12), bg="red", fg="white").pack(pady=5)
-        tk.Button(self.frame_right_info, text="Exit", command=self.exit_program,
-                  font=("Arial", 12), bg="gray", fg="white").pack(pady=5)
+        tk.Button(self.frame_right_info, text="Capture Face", command=self.capture_multiple_faces, font=("Arial", 12), bg="green", fg="white").pack(pady=5)
+        tk.Button(self.frame_right_info, text="Clear Data", command=self.clear_data, font=("Arial", 12), bg="red", fg="white").pack(pady=5)
+        tk.Button(self.frame_right_info, text="Exit", command=self.exit_program, font=("Arial", 12), bg="gray", fg="white").pack(pady=5)
 
         # Status label and progress bar
         self.capture_label = tk.Label(self.frame_right_info, text="", font=("Arial", 14, "bold"))
         self.capture_label.pack(pady=10)
-
-        self.progress_bar = ttk.Progressbar(self.frame_right_info, orient="horizontal",
-                                            length=200, mode="determinate", maximum=20)
+        self.progress_bar = ttk.Progressbar(self.frame_right_info, orient="horizontal", length=200, mode="determinate", maximum=20)
         self.progress_bar.pack(pady=5)
 
         # Face preview
@@ -63,7 +71,7 @@ class Face_Register:
 
         self.frame_right_info.pack(side=tk.RIGHT, padx=10, pady=10)
 
-        # -------------------- CAMERA SETUP --------------------
+        # ---- CAMERA SETUP ----
         self.cap = cv2.VideoCapture(0)
         # self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
 
@@ -77,7 +85,7 @@ class Face_Register:
 
         self.process()  # Start frame processing loop
 
-    # ====================== PROCESS CAMERA FRAMES ======================
+    # =========== PROCESS CAMERA FRAMES ===========
     def process(self):
         ret, frame = self.cap.read()
         if not ret or frame is None:
@@ -104,7 +112,7 @@ class Face_Register:
 
         self.win.after(3, self.process)
 
-    # ====================== DETECT FACES IN FRAME ======================
+    # =========== DETECT FACES IN FRAME ===========
     def detect_faces(self, gray_frame, frame):
         if self.ss_cnt % 5 == 0:
             faces = self.face_cascade.detectMultiScale(
@@ -119,7 +127,7 @@ class Face_Register:
 
         self.ss_cnt += 1
 
-    # ====================== START FACE CAPTURE ======================
+    # =========== START FACE CAPTURE ===========
     def capture_multiple_faces(self):
         name = self.input_name.get().strip()
 
@@ -132,7 +140,7 @@ class Face_Register:
         self.total_captures = 20  # Total images to collect
 
         # Create folders
-        face_dir = "modules/data/data_faces_from_camera"
+        face_dir = "data/data_faces_from_camera"
         self.person_dir = os.path.join(face_dir, self.capture_name)
         os.makedirs(face_dir, exist_ok=True)
         os.makedirs(self.person_dir, exist_ok=True)
@@ -144,7 +152,7 @@ class Face_Register:
 
         self.capture_next_image()  # Start capture loop
 
-    # ====================== CAPTURE NEXT FACE ======================
+    # =========== CAPTURE NEXT FACE ===========
     def capture_next_image(self):
         if self.capture_index > self.total_captures:
             self.capture_label.config(text="✅ Capture complete!")
@@ -178,47 +186,44 @@ class Face_Register:
                 # Show preview
                 face_preview_img = cv2.resize(face_img, (100, 100))
                 face_preview_img = cv2.cvtColor(face_preview_img, cv2.COLOR_GRAY2RGB)
-                img = Image.fromarray(face_preview_img)
-                img_tk = ImageTk.PhotoImage(image=img)
+                img_tk = ImageTk.PhotoImage(image=Image.fromarray(face_preview_img))
                 self.face_preview.img_tk = img_tk
                 self.face_preview.configure(image=img_tk)
 
-                self.capture_index += 1
-                break
+        self.win.after(500, self.capture_next_image)
 
-        # Try capturing next image after 1 second
-        self.win.after(1000, self.capture_next_image)
-
-    # ====================== TRAIN THE RECOGNIZER ======================
+    # =========== TRAIN THE RECOGNIZER ===========
     def train_recognizer(self):
+        # Get face images and labels
+        face_dir = "data/data_faces_from_camera"
         recognizer = cv2.face.LBPHFaceRecognizer_create()
         faces = []
         labels = []
         label_ids = {}
         current_id = 0
 
-        face_dir = "modules/data/data_faces_from_camera"
+        for person_dir in os.listdir(face_dir):
+            person_path = os.path.join(face_dir, person_dir)
+            if not os.path.isdir(person_path):
+                continue  # Skip if not a directory
 
-        for root, dirs, files in os.walk(face_dir):
-            for dir_name in dirs:
-                if dir_name not in label_ids:
-                    label_ids[dir_name] = current_id
-                    current_id += 1
+            label_ids[person_dir] = current_id
+            current_id += 1
 
-                person_dir = os.path.join(root, dir_name)
-                for file in os.listdir(person_dir):
-                    if file.endswith("jpg"):
-                        path = os.path.join(person_dir, file)
-                        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-                        faces.append(img)
-                        labels.append(label_ids[dir_name])
+            for file in os.listdir(person_path):
+                if not file.endswith((".png", ".jpg", ".jpeg")):
+                    continue  # Skip non-image files
+                path = os.path.join(person_path, file)
+                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                faces.append(img)
+                labels.append(label_ids[person_dir])
 
         if len(faces) > 0:
             recognizer.train(faces, np.array(labels))
-            recognizer.save("modules/data/trained_model.yml")
+            recognizer.save("data/trained_model.yml")
 
             # Save label-to-ID mapping
-            with open("modules/data/label_mapping.txt", "w") as f:
+            with open("data/label_mapping.txt", "w") as f:
                 for name, id in label_ids.items():
                     f.write(f"{name},{id}\n")
 
@@ -228,15 +233,15 @@ class Face_Register:
 
     # ====================== CLEAR ALL DATA ======================
     def clear_data(self):
-        face_dir = "modules/data/data_faces_from_camera/"
+        face_dir = "data/data_faces_from_camera/"
         if os.path.exists(face_dir):
             shutil.rmtree(face_dir)
             os.makedirs(face_dir)
 
-            if os.path.exists("modules/data/trained_model.yml"):
-                os.remove("modules/data/trained_model.yml")
-            if os.path.exists("modules/data/label_mapping.txt"):
-                os.remove("modules/data/label_mapping.txt")
+            if os.path.exists("data/trained_model.yml"):
+                os.remove("data/trained_model.yml")
+            if os.path.exists("data/label_mapping.txt"):
+                os.remove("data/label_mapping.txt")
 
             messagebox.showinfo("Success", "All face data has been cleared.")
         else:
@@ -254,5 +259,5 @@ def main():
     app = Face_Register()
     app.win.mainloop()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
