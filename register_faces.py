@@ -190,6 +190,9 @@ class Face_Register:
                 self.face_preview.img_tk = img_tk
                 self.face_preview.configure(image=img_tk)
 
+                self.capture_index += 1  # Increment ONLY when a face is captured
+                break # Ensure only one face is captured per frame
+
         self.win.after(500, self.capture_next_image)
 
     # =========== TRAIN THE RECOGNIZER ===========
