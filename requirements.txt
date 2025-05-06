@@ -5,3 +5,4 @@ Pillow
 tk-tools
 pyserial
 SQLAlchemy
+picamera2

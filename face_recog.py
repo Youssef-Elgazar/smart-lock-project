@@ -5,6 +5,17 @@ import numpy as np
 import os
 import sqlite3
 import datetime
+# Add picamera2 imports
+from picamera2 import Picamera2
+# Import libcamera controls but handle case where specific controls aren't available
+try:
+    from libcamera import controls
+except ImportError:
+    # Create a simple placeholder if the full module isn't available
+    class ControlsPlaceholder:
+        class AfModeEnum:
+            Continuous = 2  # Default value, may not work on all cameras
+    controls = ControlsPlaceholder()
 
 # ==================================================================
 # Index:
@@ -53,17 +64,54 @@ class FaceRecognizer:
     self.face_cascade = cv2.CascadeClassifier(
       cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-    # Initialize webcam
-    self.cap = cv2.VideoCapture(0)
+    # Initialize PiCamera2 instead of webcam
+    self.picam2 = Picamera2()
     self.frame_width = 640
     self.frame_height = 480
-    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
-    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
+    
+    # Configure the camera
+    config = self.picam2.create_preview_configuration(
+        main={"size": (self.frame_width, self.frame_height), "format": "RGB888"}
+    )
+    self.picam2.configure(config)
+    
+    # Try to set autofocus if available, but don't fail if not supported
+    try:
+        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})
+        print("Continuous autofocus enabled")
+    except Exception as e:
+        print(f"Autofocus not available: {e}")
+        # Some cameras might support manual focus instead
+        try:
+            # Try to set a reasonable default focus distance
+            self.picam2.set_controls({"LensPosition": 0.5})  # Mid-distance focus
+            print("Manual focus set")
+        except:
+            print("Manual focus not available either")
+    
+    # Start the camera
+    self.picam2.start()
+    
+    # Check camera availability - different approach for PiCamera2
+    try:
+        # Just try to capture a test frame to ensure camera is working
+        test_frame = self.picam2.capture_array()
+        if test_frame is None:
+            messagebox.showerror("Error", "Camera not detected. Please check your Raspberry Pi camera.")
+            return
+    except Exception as e:
+        messagebox.showerror("Error", f"Camera error: {str(e)}")
+        return
 
-    # Check camera availability
-    if not self.cap.isOpened():
-      messagebox.showerror("Error", "Camera not detected. Please check your webcam.")
-      return
+    # Original OpenCV webcam initialization (commented out)
+    # self.cap = cv2.VideoCapture(0)
+    # self.frame_width = 640
+    # self.frame_height = 480
+    # self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
+    # self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
+    # if not self.cap.isOpened():
+    #   messagebox.showerror("Error", "Camera not detected. Please check your webcam.")
+    #   return
 
     self.recently_marked = {}
     self.re_mark_delay = 60
@@ -158,18 +206,33 @@ class FaceRecognizer:
     return np.hstack((frame, panel))
 
   def run(self):
-    # Main loop for webcam and face recognition
-    while self.cap.isOpened():
-      ret, frame = self.cap.read()
-      if not ret or frame is None or frame.size == 0:
+    # Main loop for camera and face recognition
+    while True:
+      # Capture frame from PiCamera2
+      frame = self.picam2.capture_array()
+      
+      if frame is None or frame.size == 0:
         print("Warning: Invalid frame received. Skipping...")
         continue
 
       try:
+        # PiCamera2 gives us RGB frames, but OpenCV expects BGR
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
       except cv2.error:
         print("Warning: Corrupt frame detected. Skipping...")
         continue
+
+      # Original OpenCV capture code (commented out)
+      # ret, frame = self.cap.read()
+      # if not ret or frame is None or frame.size == 0:
+      #   print("Warning: Invalid frame received. Skipping...")
+      #   continue
+      # try:
+      #   gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+      # except cv2.error:
+      #   print("Warning: Corrupt frame detected. Skipping...")
+      #   continue
 
       self.detect_faces(gray, frame)
 
@@ -187,7 +250,8 @@ class FaceRecognizer:
         break
 
     # Clean up
-    self.cap.release()
+    # self.cap.release()  # Original OpenCV cleanup (commented out)
+    self.picam2.stop()  # Stop the PiCamera2
     cv2.destroyAllWindows()
 
 # =========== RUN APP ===========
