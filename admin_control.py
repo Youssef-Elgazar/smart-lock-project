@@ -3,6 +3,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 import cv2
 from PIL import Image, ImageTk
+import paho.mqtt.client as mqtt
+import json
 
 class AdminControlPanel:
     def __init__(self):
@@ -10,47 +12,47 @@ class AdminControlPanel:
         self.window.title("Admin Control Panel")
         self.window.geometry("1200x720")
         
+        # MQTT Client Setup
+        self.mqtt_client = mqtt.Client("AdminPanel")
+        self.mqtt_client.connect("localhost", 1883)
+        self.mqtt_client.loop_start()
+        
         # Left side - Camera Feed
         self.camera_frame = tk.Frame(self.window, width=800, height=720)
         self.camera_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
         self.camera_label = tk.Label(self.camera_frame)
         self.camera_label.pack(fill=tk.BOTH, expand=True)
         
-        # Right side - Control Buttons
+        # Right side - Controls
         self.control_frame = tk.Frame(self.window, width=400, height=720, bg="#f0f0f0")
         self.control_frame.pack(side=tk.RIGHT, fill=tk.BOTH)
         
-        # Title
         tk.Label(self.control_frame, text="Admin Controls", font=("Arial", 24, "bold"), bg="#f0f0f0").pack(pady=40)
         
-        # Accept Button (Green)
         self.accept_btn = tk.Button(
             self.control_frame, 
             text="ACCEPT", 
             command=self.accept_action,
             font=("Arial", 18, "bold"),
-            bg="#4CAF50",  # Green
+            bg="#4CAF50",
             fg="white",
             width=20,
             height=3
         )
         self.accept_btn.pack(pady=30)
         
-        # Emergency Button (Red)
         self.emergency_btn = tk.Button(
             self.control_frame, 
             text="EMERGENCY", 
             command=self.emergency_action,
             font=("Arial", 18, "bold"),
-            bg="#F44336",  # Red
+            bg="#F44336",
             fg="white",
             width=20,
             height=3
         )
         self.emergency_btn.pack(pady=30)
         
-        # Status Label
         self.status_label = tk.Label(
             self.control_frame, 
             text="System Ready", 
@@ -59,7 +61,6 @@ class AdminControlPanel:
         )
         self.status_label.pack(pady=20)
         
-        # Initialize camera
         self.cap = cv2.VideoCapture(0)
         if not self.cap.isOpened():
             messagebox.showerror("Error", "Could not open video device")
@@ -82,20 +83,20 @@ class AdminControlPanel:
     
     def accept_action(self):
         self.status_label.config(text="Accepted - System Active", fg="green")
-        # Add your accept logic here
-        print("Accept button pressed")
+        self.mqtt_client.publish("smartlock/control", 
+                               json.dumps({"command": "unlock", "source": "admin"}))
     
     def emergency_action(self):
         self.status_label.config(text="EMERGENCY - System Locked", fg="red")
-        # Add your emergency logic here
-        print("Emergency button pressed")
+        self.mqtt_client.publish("smartlock/control",
+                               json.dumps({"command": "lockdown", "source": "admin"}))
         messagebox.showwarning("Emergency", "Emergency protocol activated! System locked down.")
     
     def on_close(self):
         if self.cap.isOpened():
             self.cap.release()
+        self.mqtt_client.disconnect()
         self.window.destroy()
 
 if __name__ == "__main__":
     AdminControlPanel()
-    
