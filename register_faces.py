@@ -8,6 +8,9 @@ import tkinter as tk
 from tkinter import font as tkFont
 from tkinter import messagebox, ttk
 from PIL import Image, ImageTk
+import paho.mqtt.client as mqtt
+import json
+import datetime
 
 # ==================================================================
 # Index:
@@ -31,6 +34,9 @@ class Face_Register:
         self.current_frame_faces_cnt = 0
         self.existing_faces_cnt = 0
         self.ss_cnt = 0
+
+        self.mqtt_client = mqtt.Client("FaceRegister")
+        self.mqtt_client.connect("localhost", 1883)
 
         # Create main window
         self.win = tk.Tk()
@@ -230,6 +236,13 @@ class Face_Register:
                 for name, id in label_ids.items():
                     f.write(f"{name},{id}\n")
 
+            self.mqtt_client.publish("smartlock/system",
+                                   json.dumps({
+                                       "type": "model_update",
+                                       "faces_count": len(faces),
+                                       "timestamp": datetime.datetime.now().isoformat()
+                                   }))
+
             print("✅ Face recognizer trained successfully!")
         else:
             print("⚠️ No faces found for training!")
@@ -252,15 +265,13 @@ class Face_Register:
 
     # ====================== EXIT CLEANLY ======================
     def exit_program(self):
+        self.mqtt_client.disconnect()
         self.cap.release()
         cv2.destroyAllWindows()
         self.win.quit()
 
 # ========================== RUN APP ==========================
-def main():
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     app = Face_Register()
     app.win.mainloop()
-
-if __name__ == "__main__":
-    main()
