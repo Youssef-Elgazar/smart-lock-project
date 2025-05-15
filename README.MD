@@ -1,4 +1,6 @@
-# README: Shared Camera System Setup
+# Smart Lock System
+
+A facial recognition-based smart lock system with admin controls and logging.
 
 ## Overview
 
@@ -14,6 +16,22 @@ The system uses MQTT to share the camera stream:
 2. It processes these frames for face recognition
 3. It also compresses and publishes each frame to the MQTT topic `smartlock/camera`
 4. `admin_control.py` subscribes to this topic and displays the frames
+
+## Environment Setup
+
+Inside the project folder, run the following commands:
+
+```powershell
+# Create virtual environment with system packages
+python -m venv --system-site-packages iot
+
+# Activate virtual environment
+iot\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt --only-binary=:all:
+pip install paho-mqtt==1.5.1
+```
 
 ## Requirements
 
@@ -50,17 +68,31 @@ netstat -an | findstr 1883
 sudo systemctl status mosquitto
 ```
 
-### 3. Starting the Applications
+## Running the System
 
-1. First, start the face recognition app:
-   ```
-   python face_recognition_app.py
-   ```
+Open 4 separate terminal windows in the project folder and run each component:
 
-2. Then, in a separate terminal, start the admin control panel:
-   ```
-   python admin_control.py
-   ```
+1. Start the logging system:
+```powershell
+python system_logs.py
+```
+
+2. Start the face registration tool:
+```powershell
+python register_faces.py
+```
+
+3. Launch the admin control panel:
+```powershell
+python admin_control.py
+```
+
+4. Start the main face recognition app:
+```powershell
+streamlit run face_recognition_app.py
+```
+
+Each component must be running for the system to work properly. The system uses MQTT for communication between components, so make sure you have a MQTT broker (like Mosquitto) running locally.
 
 ## Troubleshooting
 
