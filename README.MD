@@ -1,117 +1,78 @@
-# Smart Lock Project - Setup Instructions
+# README: Shared Camera System Setup
 
-## General Requirements
-- Python 3.10 or later
-- pip (Python package installer)
+## Overview
 
-## I. Windows Setup
+This implementation shares a single camera stream between two applications:
+1. `face_recognition_app.py` - The Streamlit web interface that captures and processes camera frames
+2. `admin_control.py` - The admin control panel that displays the same camera feed
 
-### 1. Set Up Virtual Environment
+## How It Works
 
-Create a virtual environment with system site-packages:
-```powershell
-python -m venv --system-site-packages iot
-```
+The system uses MQTT to share the camera stream:
 
-Activate the virtual environment:
-```powershell
-.\iot\Scripts\Activate.ps1
-```
+1. `face_recognition_app.py` captures frames from the camera
+2. It processes these frames for face recognition
+3. It also compresses and publishes each frame to the MQTT topic `smartlock/camera`
+4. `admin_control.py` subscribes to this topic and displays the frames
 
-> **Note:** If you encounter execution policy errors, you may need to run:
-> ```powershell
-> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
-> ```
+## Requirements
 
-### 2. Install Dependencies
+- MQTT Broker (Mosquitto) running on your machine
+- All Python dependencies as listed in your requirements.txt
 
-Install required packages:
-```powershell
-pip install --only-binary=:all: opencv-python==4.7.0.72 opencv-contrib-python==4.7.0.72 numpy Pillow==9.5.0 paho-mqtt==1.6.1 sqlalchemy==2.0.15 streamlit==1.22.0 pyserial==3.5
-pip install tk-tools==0.21.0
-```
+## Setup Instructions
 
-Alternatively, if you have a requirements.txt file:
-```powershell
-pip install -r requirements.txt --only-binary=:all:
-```
+### 1. Install & Start Mosquitto MQTT Broker
 
-### 3. Running the Application
+#### On Windows:
+1. Download Mosquitto from: https://mosquitto.org/download/
+2. Install it following the installer's instructions
+3. Start the service:
+   ```
+   net start mosquitto
+   ```
 
-Register faces:
-```powershell
-python Register_faces.py
-```
-
-Run the attendance system:
-```powershell
-python attendance_taker.py
-```
-
-## II. Raspberry Pi Setup
-
-### 1. Set Up System
-
-Update your system:
+#### On Raspberry Pi:
 ```bash
-sudo apt-get update
-sudo apt-get upgrade
+sudo apt-get install mosquitto mosquitto-clients
+sudo systemctl start mosquitto
 ```
 
-Install Python and dependencies:
+### 2. Verify Mosquitto is Running
+
+#### On Windows:
+```
+netstat -an | findstr 1883
+```
+
+#### On Raspberry Pi:
 ```bash
-sudo apt-get install python3 python3-pip
-sudo apt-get install libatlas-base-dev libjasper-dev libqtgui4 libqt4-test
+sudo systemctl status mosquitto
 ```
 
-### 2. Set Up Virtual Environment
+### 3. Starting the Applications
 
-Install virtualenv:
-```bash
-sudo apt-get install python3-venv
-```
+1. First, start the face recognition app:
+   ```
+   python face_recognition_app.py
+   ```
 
-Create a virtual environment with system site-packages:
-```bash
-python3 -m venv --system-site-packages iot
-```
-
-Activate the virtual environment:
-```bash
-source iot/bin/activate
-```
-
-### 3. Install Dependencies
-
-Install required packages from requirements.txt:
-```bash
-pip3 install -r requirements.txt
-```
-
-### 4. Running the Application
-
-Register faces:
-```bash
-python3 Register_faces.py
-```
-
-Run the attendance system:
-```bash
-python3 attendance_taker.py
-```
+2. Then, in a separate terminal, start the admin control panel:
+   ```
+   python admin_control.py
+   ```
 
 ## Troubleshooting
 
-If you encounter build errors when installing packages on Windows:
-1. Install Microsoft C++ Build Tools from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
-2. During installation, select "C++ build tools" under Workloads
-3. Restart your terminal and try installing the requirements again
+### No Camera Feed in Admin Panel
+- Make sure `face_recognition_app.py` is running first
+- Verify Mosquitto is running
+- Check for error messages in both console windows
 
-## Project Components
+### Connection Errors
+- Ensure Mosquitto is running on port 1883
+- Check firewall settings if applications are on different machines
 
-- **OpenCV**: Computer vision for facial recognition
-- **Pillow**: Image processing
-- **MQTT**: IoT communication protocol
-- **SQLAlchemy**: Database operations
-- **Streamlit**: Web interface
-- **PySerial**: Hardware communication
+### Performance Issues
+- Frame quality is reduced to 50% JPEG quality to improve performance
+- If needed, you can further reduce the frame rate or resolution in the code

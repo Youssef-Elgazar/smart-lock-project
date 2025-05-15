@@ -143,7 +143,7 @@ class Face_Register:
 
         self.capture_name = name
         self.capture_index = 1
-        self.total_captures = 20  # Total images to collect
+        self.total_captures = 40  # Total images to collect
 
         # Create folders
         face_dir = "data/data_faces_from_camera"
@@ -236,11 +236,11 @@ class Face_Register:
                 for name, id in label_ids.items():
                     f.write(f"{name},{id}\n")
 
+            # System update and user creation log
             self.mqtt_client.publish("smartlock/system",
                                    json.dumps({
-                                       "type": "model_update",
-                                       "faces_count": len(faces),
-                                       "timestamp": datetime.datetime.now().isoformat()
+                                       "type": "log",
+                                       "message": f"User: {self.capture_name} created"
                                    }))
 
             print("✅ Face recognizer trained successfully!")
