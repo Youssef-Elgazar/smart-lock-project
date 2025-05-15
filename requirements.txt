@@ -1,9 +1,9 @@
 opencv-python
 opencv-contrib-python
-# pip install numpy --only-binary=numpy
+numpy
 Pillow
-paho-mqtt
 sqlalchemy
 streamlit
 tk-tools
 pyserial
+# pip install paho-mqtt==1.5.1
