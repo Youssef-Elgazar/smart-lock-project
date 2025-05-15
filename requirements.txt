@@ -1,9 +1,9 @@
-opencv-python==4.7.0.72
-opencv-contrib-python==4.7.0.72
-numpy==1.26.4
-Pillow==9.5.0
-paho-mqtt==1.6.1
-sqlalchemy==2.0.15
-streamlit==1.22.0
-tk-tools==0.21.0
-pyserial==3.5
+opencv-python
+opencv-contrib-python
+# pip install numpy --only-binary=numpy
+Pillow
+paho-mqtt
+sqlalchemy
+streamlit
+tk-tools
+pyserial
