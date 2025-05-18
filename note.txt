@@ -1,0 +1,75 @@
+
+
+## Note On Raspberry Pi GPIO Pin Selection
+
+The code uses GPIO pin 17 as the default for controlling the LED. This is commonly used for the built-in LED on many Raspberry Pi models, but the exact pin can vary:
+
+- Raspberry Pi 1/2/3: Usually GPIO 16 (physical pin 36)
+- Raspberry Pi 4: Sometimes GPIO 42
+- Raspberry Pi Zero: Often GPIO 17
+
+You may need to adjust the LED pin number in the `led_control.py` file based on your specific Raspberry Pi model. To find the correct pin for your model, you can check the Raspberry Pi documentation or run this command on your Pi:
+
+```
+grep -r . /sys/class/leds/
+```
+
+This will show you the available LED pins on your specific Raspberry Pi.
+
+## Testing
+
+To test on your Raspberry Pi:
+
+1. Install the required packages: `pip install -r requirements.txt`
+2. Run the system logs: `sudo python system_logs.py`
+3. Run the face recognition app: `sudo python face_recognition_app.py`
+4. You should see the built-in LED turn on (for locked) and off (for unlocked)
+
+sudo is needed since GPIO access on Raspberry Pi requires root privileges.
+
+
+
+
+
+
+
+
+
+
+
+running buzzer : 
+
+
+
+# First install the requirements
+pip install -r requirements.txt
+
+# Then run in separate terminals:
+sudo python system_logs.py
+sudo python face_recognition_app.py  # Use "streamlit run" if needed
+sudo python admin_control.py
+
+
+
+
+
+
+
+
+# Audio Communication Setup
+
+This guide explains how to set up the voice communication components for the smart lock system.
+
+## Prerequisites
+
+The voice communication feature requires PyAudio which depends on PortAudio.
+
+### On Raspberry Pi (Debian/Ubuntu):
+
+```bash
+# Install PortAudio and other dependencies
+sudo apt-get update
+sudo apt-get install python3-pyaudio portaudio19-dev python-all-dev
+
+# Install the Python packages
+pip install pyaudio

@@ -1,0 +1,353 @@
+# admin_control.py
+import tkinter as tk
+from tkinter import messagebox, ttk
+import cv2
+from PIL import Image, ImageTk
+import paho.mqtt.client as mqtt
+import json
+import base64
+import numpy as np
+import time
+import datetime
+import socket
+
+# Import voice communication
+try:
+    from voice_comm import VoiceCommunication
+    voice_comm_available = True
+except ImportError:
+    voice_comm_available = False
+    print("Voice communication not available - missing PyAudio or other dependencies")
+
+class AdminControlPanel:
+    def __init__(self):
+        self.window = tk.Tk()
+        self.window.title("Admin Control Panel")
+        self.window.geometry("1200x720")
+        
+        # Flag to track if we've received camera frames yet
+        self.received_frame = False
+        
+        # Track IP of the door device
+        self.door_ip = None
+        
+        # MQTT Client Setup with updated client initialization
+        self.mqtt_client = mqtt.Client(client_id="AdminPanel")
+        try:
+            self.mqtt_client.connect("localhost", 1883)
+            self.mqtt_client.subscribe([
+                ("smartlock/camera", 0),
+                ("smartlock/device_info", 0)  # Subscribe to get door device IP
+            ])
+            self.mqtt_client.on_message = self.on_message
+            self.mqtt_client.loop_start()
+            print("Connected to MQTT broker")
+        except ConnectionRefusedError:
+            messagebox.showerror("MQTT Error", "Failed to connect to MQTT broker. Is Mosquitto running?")
+            print("Failed to connect to MQTT broker. Is Mosquitto running?")
+        
+        # Initialize voice communication if available
+        self.voice_comm = None
+        if voice_comm_available:
+            try:
+                self.voice_comm = VoiceCommunication(is_admin=True)
+                print("Voice communication initialized")
+            except Exception as e:
+                print(f"Error initializing voice communication: {str(e)}")
+        
+        # Get local IP address for communication
+        self.local_ip = self.get_local_ip()
+        
+        # Left side - Camera Feed
+        self.camera_frame = tk.Frame(self.window, width=800, height=720)
+        self.camera_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.camera_label = tk.Label(self.camera_frame)
+        self.camera_label.pack(fill=tk.BOTH, expand=True)
+        
+        # Right side - Controls
+        self.control_frame = tk.Frame(self.window, width=400, height=720, bg="#f0f0f0")
+        self.control_frame.pack(side=tk.RIGHT, fill=tk.BOTH)
+        
+        tk.Label(self.control_frame, text="Admin Controls", font=("Arial", 24, "bold"), bg="#f0f0f0").pack(pady=20)
+        
+        self.accept_btn = tk.Button(
+            self.control_frame, 
+            text="ALLOW ACCESS", 
+            command=self.accept_action,
+            font=("Arial", 18, "bold"),
+            bg="#4CAF50",
+            fg="white",
+            width=20,
+            height=2
+        )
+        self.accept_btn.pack(pady=15)
+        
+        self.deny_btn = tk.Button(
+            self.control_frame, 
+            text="DENY ACCESS", 
+            command=self.deny_action,
+            font=("Arial", 18, "bold"),
+            bg="#F44336",
+            fg="white",
+            width=20,
+            height=2
+        )
+        self.deny_btn.pack(pady=15)
+        
+        # Add voice communication button
+        self.voice_active = False
+        self.voice_btn = tk.Button(
+            self.control_frame,
+            text="START VOICE COMM",
+            command=self.toggle_voice_comm,
+            font=("Arial", 16, "bold"),
+            bg="#2196F3",
+            fg="white",
+            width=20,
+            height=2
+        )
+        if voice_comm_available:
+            self.voice_btn.pack(pady=15)
+        
+        self.status_label = tk.Label(
+            self.control_frame, 
+            text="System Ready", 
+            font=("Arial", 14),
+            bg="#f0f0f0"
+        )
+        self.status_label.pack(pady=10)
+        
+        # Voice comm status
+        self.voice_status = tk.Label(
+            self.control_frame,
+            text="Voice: Inactive",
+            font=("Arial", 12),
+            bg="#f0f0f0",
+            fg="gray"
+        )
+        if voice_comm_available:
+            self.voice_status.pack(pady=5)
+        
+        # Connection status indicator
+        self.connection_status = tk.Label(
+            self.control_frame,
+            text="Waiting for camera feed...",
+            font=("Arial", 12),
+            bg="#f0f0f0",
+            fg="orange"
+        )
+        self.connection_status.pack(pady=5)
+        
+        # Add a door status indicator
+        self.door_status = tk.Label(
+            self.control_frame,
+            text="🔒 DOOR LOCKED",
+            font=("Arial", 14, "bold"),
+            bg="#f0f0f0",
+            fg="red"
+        )
+        self.door_status.pack(pady=5)
+        
+        # Add emergency status indicator
+        self.emergency_status = tk.Label(
+            self.control_frame,
+            text="",
+            font=("Arial", 14, "bold"),
+            bg="#f0f0f0"
+        )
+        self.emergency_status.pack(pady=5)
+        
+        # Add a placeholder message in the camera area
+        self.camera_label.config(text="Waiting for camera feed from face recognition app...", 
+                                font=("Arial", 14))
+        
+        # Schedule a check for camera feed
+        self.window.after(5000, self.check_camera_feed)
+        
+        # Publish admin device info
+        self.publish_device_info()
+        
+        self.window.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.window.mainloop()
+    
+    def get_local_ip(self):
+        """Get the local IP address of this machine"""
+        try:
+            # Create a socket and connect to an external server
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            return "127.0.0.1"  # Fallback to localhost
+    
+    def publish_device_info(self):
+        """Publish the admin device information"""
+        self.mqtt_client.publish("smartlock/device_info", 
+                              json.dumps({
+                                  "type": "admin",
+                                  "ip": self.local_ip,
+                                  "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                              }))
+        # Schedule periodic publishing
+        self.window.after(60000, self.publish_device_info)  # Every minute
+    
+    def toggle_voice_comm(self):
+        """Toggle voice communication on/off"""
+        if self.voice_comm is None or self.door_ip is None:
+            messagebox.showerror("Error", "Voice communication not available or door device not connected")
+            return
+        
+        if not self.voice_active:
+            # Start voice communication
+            self.voice_active = True
+            self.voice_btn.config(text="STOP VOICE COMM", bg="#FF5722")
+            self.voice_status.config(text="Voice: Active", fg="green")
+            
+            # Send MQTT command to start voice communication
+            self.mqtt_client.publish("smartlock/voice_comm", 
+                                  json.dumps({
+                                      "action": "start_voice_comm",
+                                      "ip": self.door_ip,
+                                      "admin_ip": self.local_ip,
+                                      "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                  }))
+            
+            # Start local voice communication
+            self.voice_comm.start_as_admin(self.door_ip)
+            
+        else:
+            # Stop voice communication
+            self.voice_active = False
+            self.voice_btn.config(text="START VOICE COMM", bg="#2196F3")
+            self.voice_status.config(text="Voice: Inactive", fg="gray")
+            
+            # Send MQTT command to stop voice communication
+            self.mqtt_client.publish("smartlock/voice_comm", 
+                                  json.dumps({
+                                      "action": "stop_voice_comm",
+                                      "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                  }))
+            
+            # Stop local voice communication
+            self.voice_comm.stop()
+    
+    def check_camera_feed(self):
+        """Check if we've received any camera frames after 5 seconds"""
+        if not self.received_frame:
+            self.connection_status.config(
+                text="No camera feed received. Is face_recognition_app.py running?",
+                fg="red"
+            )
+        self.window.after(5000, self.check_camera_feed)
+    
+    def on_message(self, client, userdata, msg):
+        """Handle incoming MQTT messages"""
+        if msg.topic == "smartlock/camera":
+            try:
+                # Decode the image from base64
+                jpg_original = base64.b64decode(msg.payload)
+                np_arr = np.frombuffer(jpg_original, np.uint8)
+                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                
+                # Convert to RGB for display
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame)
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.camera_label.imgtk = imgtk
+                self.camera_label.configure(image=imgtk)
+                
+                # Update connection status if this is the first frame
+                if not self.received_frame:
+                    self.received_frame = True
+                    self.connection_status.config(
+                        text="Connected to camera feed",
+                        fg="green"
+                    )
+            except Exception as e:
+                print(f"Error processing camera frame: {e}")
+        
+        elif msg.topic == "smartlock/device_info":
+            try:
+                data = json.loads(msg.payload)
+                if data["type"] == "door":
+                    self.door_ip = data["ip"]
+                    print(f"Door device IP: {self.door_ip}")
+            except Exception as e:
+                print(f"Error processing device info: {e}")
+    
+    def accept_action(self):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.status_label.config(text="Access Allowed - Door Unlocked", fg="green")
+        
+        # Update door status indicator
+        self.door_status.config(text="🔓 DOOR UNLOCKED", fg="green")
+        
+        # Clear emergency status if it was active
+        self.emergency_status.config(text="")
+        
+        # Send unlock command with admin source
+        self.mqtt_client.publish("smartlock/control", 
+                               json.dumps({"command": "unlock", "source": "admin"}))
+        
+        # Log the action
+        self.mqtt_client.publish("smartlock/system",
+                               json.dumps({
+                                   "type": "log",
+                                   "message": f"Unknown user allowed by admin at {timestamp}"
+                               }))
+        
+        # No need to schedule relock here, system_logs.py will handle it
+
+    def relock_door(self):
+        self.status_label.config(text="Door Relocked - System Ready", fg="black")
+        self.door_status.config(text="🔒 DOOR LOCKED", fg="red")
+        
+        # Send lockdown command with admin source
+        self.mqtt_client.publish("smartlock/control",
+                               json.dumps({"command": "lockdown", "source": "admin"}))
+
+    def deny_action(self):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.status_label.config(text="Access Denied - Door Locked", fg="red")
+        
+        # Ensure door status indicator shows locked
+        self.door_status.config(text="🔒 DOOR LOCKED", fg="red")
+        
+        # Update emergency status
+        self.emergency_status.config(
+            text="⚠️ EMERGENCY SERVICES CONTACTED",
+            fg="red"
+        )
+        
+        # Send lockdown command with admin source
+        self.mqtt_client.publish("smartlock/control",
+                               json.dumps({"command": "lockdown", "source": "admin"}))
+        
+        # Log the action
+        self.mqtt_client.publish("smartlock/system",
+                               json.dumps({
+                                   "type": "log",
+                                   "message": f"Unknown user denied by admin at {timestamp}"
+                               }))
+        
+        messagebox.showinfo("Access Denied", "Access has been denied. Emergency services have been contacted.")
+        
+        # Reset status after 3 seconds
+        self.window.after(3000, lambda: self.status_label.config(text="System Ready", fg="black"))
+    
+    def on_close(self):
+        # Stop voice communication if active
+        if self.voice_active and self.voice_comm:
+            self.voice_comm.stop()
+        
+        # Clean up voice comm resources
+        if self.voice_comm:
+            self.voice_comm.cleanup()
+        
+        self.mqtt_client.disconnect()
+        self.window.destroy()
+
+if __name__ == "__main__":
+    AdminControlPanel()

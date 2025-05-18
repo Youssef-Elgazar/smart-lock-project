@@ -1,90 +1,110 @@
-Project Setup Instructions
+# Smart Lock System
 
-**General Requirements (Both Platforms):**
+A facial recognition-based smart lock system with admin controls and logging.
 
-- Python 3.10 or later
-- pip (Python package installer)
+## Overview
 
-**I. Windows Setup**
+This implementation shares a single camera stream between two applications:
+1. `face_recognition_app.py` - The Streamlit web interface that captures and processes camera frames
+2. `admin_control.py` - The admin control panel that displays the same camera feed
 
-1.  **Install Dependencies:**
+## How It Works
 
-    - **Virtual Environment (Recommended):**
-      - Install `virtualenv` (if needed):
-        ```powershell
-        pip install virtualenv
-        ```
-      - Create:
-        ```powershell
-        python -m venv venv
-        ```
-      - Activate:
-        ```powershell
-        .\venv\Scripts\activate
-        ```
-    - Install packages using `requirements.txt`:
-      ```powershell
-      pip install -r requirements.txt
-      ```
+The system uses MQTT to share the camera stream:
 
-2.  **Running the Code:**
+1. `face_recognition_app.py` captures frames from the camera
+2. It processes these frames for face recognition
+3. It also compresses and publishes each frame to the MQTT topic `smartlock/camera`
+4. `admin_control.py` subscribes to this topic and displays the frames
 
-    - Register faces:
-      ```powershell
-      python Register_faces.py
-      ```
-    - Run attendance:
-      ```powershell
-      python attendance_taker.py
-      ```
+## Environment Setup
 
-**II. Raspberry Pi Setup**
+Inside the project folder, run the following commands:
 
-1.  **Install Dependencies:**
+```powershell
+# Create virtual environment with system packages
+python -m venv --system-site-packages iot
 
-    - Update system:
-      ```bash
-      sudo apt-get update
-      sudo apt-get upgrade
-      ```
-    - Install Python 3 and pip:
-      ```bash
-      sudo apt-get install python3 python3-pip
-      ```
-    - Install `virtualenv` (recommended):
-      ```bash
-      sudo apt-get install python3-venv
-      ```
-    - Create and activate virtual environment:
-      ```bash
-      python3 -m venv venv
-      source venv/bin/activate
-      ```
-    - Install packages using `requirements.txt`:
-      ```bash
-      pip3 install -r requirements.txt
-      ```
-    - Install OpenCV dependencies:
-      ```bash
-      sudo apt-get install libatlas-base-dev libjasper-dev libqtgui4 libqt4-test
-      ```
+# Activate virtual environment
+iot\Scripts\Activate.ps1
 
-2.  **Running the Code:**
-
-    - Register faces:
-      ```bash
-      python3 Register_faces.py
-      ```
-    - Run attendance:
-      ```bash
-      python3 attendance_taker.py
-      ```
-
-**III. `requirements.txt`:**
-
-```text
-opencv-python
-numpy
-Pillow
-tkinter
+# Install dependencies
+pip install -r requirements.txt --only-binary=:all:
+pip install paho-mqtt==1.5.1
 ```
+
+## Requirements
+
+- MQTT Broker (Mosquitto) running on your machine
+- All Python dependencies as listed in your requirements.txt
+
+## Setup Instructions
+
+### 1. Install & Start Mosquitto MQTT Broker
+
+#### On Windows:
+1. Download Mosquitto from: https://mosquitto.org/download/
+2. Install it following the installer's instructions
+3. Start the service:
+   ```
+   net start mosquitto
+   ```
+
+#### On Raspberry Pi:
+```bash
+sudo apt-get install mosquitto mosquitto-clients
+sudo systemctl start mosquitto
+```
+
+### 2. Verify Mosquitto is Running
+
+#### On Windows:
+```
+netstat -an | findstr 1883
+```
+
+#### On Raspberry Pi:
+```bash
+sudo systemctl status mosquitto
+```
+
+## Running the System
+
+Open 4 separate terminal windows in the project folder and run each component:
+
+1. Start the logging system:
+```powershell
+python system_logs.py
+```
+
+2. Start the face registration tool:
+```powershell
+python register_faces.py
+```
+
+3. Launch the admin control panel:
+```powershell
+python admin_control.py
+```
+
+4. Start the main face recognition app:
+```powershell
+streamlit run face_recognition_app.py
+```
+
+Each component must be running for the system to work properly. The system uses MQTT for communication between components, so make sure you have a MQTT broker (like Mosquitto) running locally.
+
+## Troubleshooting
+
+### No Camera Feed in Admin Panel
+- Make sure `face_recognition_app.py` is running first
+- Verify Mosquitto is running
+- Check for error messages in both console windows
+
+### Connection Errors
+- Ensure Mosquitto is running on port 1883
+- Check firewall settings if applications are on different machines
+
+### Performance Issues
+- Frame quality is reduced to 50% JPEG quality to improve performance
+- If needed, you can further reduce the frame rate or resolution in the code

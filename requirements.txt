@@ -2,7 +2,11 @@ opencv-python
 opencv-contrib-python
 numpy
 Pillow
+sqlalchemy
+streamlit
 tk-tools
 pyserial
-SQLAlchemy
+paho-mqtt==1.5.1
+RPi.GPIO
 picamera2
+pyaudio
