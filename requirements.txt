@@ -6,4 +6,4 @@ sqlalchemy
 streamlit
 tk-tools
 pyserial
-# pip install paho-mqtt==1.5.1
+paho-mqtt==1.5.1

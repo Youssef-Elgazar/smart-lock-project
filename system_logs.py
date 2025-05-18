@@ -4,9 +4,15 @@ import datetime
 import logging
 import time
 
-# Track last time unknown user message was logged
-last_unknown_log_time = 0
-UNKNOWN_LOG_INTERVAL = 60  # 60 seconds interval
+# Track last message times by type to avoid log overcrowding
+last_message_times = {
+    "unknown_user": 0,
+    "authorized_user": 0,
+    "admin_allow": 0,
+    "admin_deny": 0,
+    "system_log": 0
+}
+MESSAGE_INTERVAL = 60  # 1 minute interval for all log types
 
 def on_connect(client, userdata, flags, rc):
     print("Connected to MQTT broker")
@@ -15,8 +21,6 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe("smartlock/control")
 
 def on_message(client, userdata, msg):
-    global last_unknown_log_time
-    
     try:
         data = json.loads(msg.payload)
         current_time = time.time()
@@ -24,21 +28,24 @@ def on_message(client, userdata, msg):
         
         if msg.topic == "smartlock/access" and data["type"] == "access":
             if data["authorized"]:
-                log_message = f"{data['user']} unlocked door at {timestamp}"
-                logging.info(log_message)
+                # Apply rate limiting to authorized user logs
+                if current_time - last_message_times["authorized_user"] >= MESSAGE_INTERVAL:
+                    log_message = f"{data['user']} unlocked door at {timestamp}"
+                    logging.info(log_message)
+                    last_message_times["authorized_user"] = current_time
                 
-                # Republish as system event
+                # Republish as system event (no rate limiting for events)
                 client.publish("smartlock/events", json.dumps({
                     "name": data['user'],
                     "status": "granted",
                     "timestamp": timestamp
                 }))
             else:
-                # Only log unknown user message once per minute
-                if current_time - last_unknown_log_time >= UNKNOWN_LOG_INTERVAL:
+                # Rate limiting for unknown user logs
+                if current_time - last_message_times["unknown_user"] >= MESSAGE_INTERVAL:
                     log_message = f"Unknown user trying to access. Contacting admin. {timestamp}"
                     logging.info(log_message)
-                    last_unknown_log_time = current_time
+                    last_message_times["unknown_user"] = current_time
                     
                     # Republish as system event
                     client.publish("smartlock/events", json.dumps({
@@ -48,14 +55,17 @@ def on_message(client, userdata, msg):
                     }))
         
         elif msg.topic == "smartlock/control" and data.get("source") == "admin":
-            # Log admin actions
+            # Log admin actions with rate limiting
             if data["command"] == "unlock":
-                log_message = f"Unknown user allowed by admin at {timestamp}"
-                logging.info(log_message)
+                if current_time - last_message_times["admin_allow"] >= MESSAGE_INTERVAL:
+                    log_message = f"Unknown user allowed by admin at {timestamp}"
+                    logging.info(log_message)
+                    last_message_times["admin_allow"] = current_time
                 
-                # Send notification to face recognition app
+                # Send notification to face recognition app with custom message
                 client.publish("smartlock/admin_action", json.dumps({
                     "action": "allowed",
+                    "message": "Allowed by admin.",
                     "timestamp": timestamp
                 }))
                 
@@ -67,12 +77,15 @@ def on_message(client, userdata, msg):
                 }))
                 
             elif data["command"] == "lockdown":
-                log_message = f"Unknown user denied by admin at {timestamp}"
-                logging.info(log_message)
+                if current_time - last_message_times["admin_deny"] >= MESSAGE_INTERVAL:
+                    log_message = f"Unknown user denied by admin at {timestamp}"
+                    logging.info(log_message)
+                    last_message_times["admin_deny"] = current_time
                 
-                # Send notification to face recognition app
+                # Send notification to face recognition app with emergency message
                 client.publish("smartlock/admin_action", json.dumps({
                     "action": "denied",
+                    "message": "Denied by admin. Contacting emergency services.",
                     "timestamp": timestamp
                 }))
                 
@@ -84,8 +97,13 @@ def on_message(client, userdata, msg):
                 }))
         
         elif msg.topic == "smartlock/system" and data.get("type") == "log":
-            # Log system messages (like user creation)
-            logging.info(data["message"])
+            # Log system messages (like user creation) with rate limiting
+            # Exception: Always log user creation messages
+            if data["message"].startswith("User:") or current_time - last_message_times["system_log"] >= MESSAGE_INTERVAL:
+                logging.info(data["message"])
+                # Only update timestamp for non-user creation logs
+                if not data["message"].startswith("User:"):
+                    last_message_times["system_log"] = current_time
             
     except Exception as e:
         logging.error(f"Error processing message: {e}")

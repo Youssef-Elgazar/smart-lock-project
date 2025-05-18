@@ -10,6 +10,9 @@ import time
 import paho.mqtt.client as mqtt
 import json
 import base64
+import threading
+# For PC buzzer sound simulation
+import winsound
 
 st.set_page_config(layout="wide")
 
@@ -29,6 +32,20 @@ if 'unknown_timeout_until' not in st.session_state:
     st.session_state.unknown_timeout_until = None
 if 'admin_action' not in st.session_state:
     st.session_state.admin_action = None
+if 'is_locked' not in st.session_state:
+    st.session_state.is_locked = True
+if 'emergency_mode' not in st.session_state:
+    st.session_state.emergency_mode = False
+
+# Function to simulate buzzer on PC
+def sound_alarm(duration=1000, frequency=800):
+    """Simulate alarm sound on PC"""
+    try:
+        # Windows-specific sound (duration in ms, freq in Hz)
+        winsound.Beep(frequency, duration)
+    except:
+        # Fallback for non-Windows systems
+        print("ALARM SOUND: Cannot play on this system")
 
 class MQTTClient:
     def __init__(self):
@@ -56,20 +73,34 @@ class MQTTClient:
                 if data["source"] == "admin":
                     if data["command"] == "unlock":
                         st.session_state.admin_message = "✅ Access Allowed by Admin"
+                        st.session_state.is_locked = False
+                        # Reset emergency mode if it was active
+                        st.session_state.emergency_mode = False
                     elif data["command"] == "lockdown":
-                        st.session_state.admin_message = "❌ Access Denied by Admin"
+                        st.session_state.admin_message = "❌ Access Denied by Admin. Contacting emergency services."
+                        st.session_state.is_locked = True
+                        st.session_state.emergency_mode = True
+                        # Sound the alarm
+                        threading.Thread(target=sound_alarm, args=(2000, 1000)).start()
             elif msg.topic == "smartlock/admin_action":
                 # Handle admin actions from system_logs
                 if data["action"] == "allowed":
                     st.session_state.admin_action = {
-                        "message": "✅ Access Allowed by Admin",
+                        "message": data["message"] if "message" in data else "✅ Access Allowed by Admin",
                         "timestamp": data["timestamp"]
                     }
+                    st.session_state.is_locked = False
+                    # Reset emergency mode if it was active
+                    st.session_state.emergency_mode = False
                 elif data["action"] == "denied":
                     st.session_state.admin_action = {
-                        "message": "❌ Access Denied by Admin",
+                        "message": data["message"] if "message" in data else "❌ Access Denied by Admin",
                         "timestamp": data["timestamp"]
                     }
+                    st.session_state.is_locked = True
+                    st.session_state.emergency_mode = True
+                    # Sound the alarm
+                    threading.Thread(target=sound_alarm, args=(2000, 1000)).start()
         except Exception as e:
             st.error(f"Error processing MQTT message: {str(e)}")
 
@@ -112,6 +143,8 @@ class FaceRecognition:
                     "timestamp": timestamp
                 })
             )
+            # Update lock status
+            st.session_state.is_locked = False
         else:
             self.mqtt_client.publish("smartlock/access", 
                 json.dumps({
@@ -121,6 +154,8 @@ class FaceRecognition:
                     "timestamp": timestamp
                 })
             )
+            # Keep lock status locked
+            st.session_state.is_locked = True
         
     def cleanup(self):
         self.mqtt_client.disconnect()
@@ -141,6 +176,16 @@ def main():
         st.session_state.camera_running = True
     if stop_button:
         st.session_state.camera_running = False
+
+    # Display lock status in the UI
+    if st.session_state.is_locked:
+        col2.error("🔒 DOOR LOCKED")
+    else:
+        col2.success("🔓 DOOR UNLOCKED")
+        
+    # Display emergency mode warning if active
+    if st.session_state.emergency_mode:
+        st.error("⚠️ EMERGENCY MODE ACTIVE - Security has been notified")
 
     if st.session_state.camera_running:
         cap = cv2.VideoCapture(0)
@@ -197,7 +242,7 @@ def main():
                     feedback_placeholder.success(st.session_state.admin_action["message"])
                 else:
                     feedback_placeholder.error(st.session_state.admin_action["message"])
-                time.sleep(2)
+                time.sleep(3)
                 st.session_state.admin_action = None
             # Then check for face recognition messages
             elif recognized_name:
@@ -225,7 +270,7 @@ def main():
                     feedback_placeholder.success(st.session_state.admin_message)
                 else:
                     feedback_placeholder.error(st.session_state.admin_message)
-                time.sleep(2)
+                time.sleep(3)
                 st.session_state.admin_message = None
 
             if st.session_state.last_access:

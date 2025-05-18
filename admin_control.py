@@ -85,6 +85,25 @@ class AdminControlPanel:
         )
         self.connection_status.pack(pady=10)
         
+        # Add a door status indicator
+        self.door_status = tk.Label(
+            self.control_frame,
+            text="🔒 DOOR LOCKED",
+            font=("Arial", 14, "bold"),
+            bg="#f0f0f0",
+            fg="red"
+        )
+        self.door_status.pack(pady=10)
+        
+        # Add emergency status indicator
+        self.emergency_status = tk.Label(
+            self.control_frame,
+            text="",
+            font=("Arial", 14, "bold"),
+            bg="#f0f0f0"
+        )
+        self.emergency_status.pack(pady=10)
+        
         # Add a placeholder message in the camera area
         self.camera_label.config(text="Waiting for camera feed from face recognition app...", 
                                 font=("Arial", 14))
@@ -134,6 +153,12 @@ class AdminControlPanel:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.status_label.config(text="Access Allowed - Door Unlocked", fg="green")
         
+        # Update door status indicator
+        self.door_status.config(text="🔓 DOOR UNLOCKED", fg="green")
+        
+        # Clear emergency status if it was active
+        self.emergency_status.config(text="")
+        
         # Send unlock command with admin source
         self.mqtt_client.publish("smartlock/control", 
                                json.dumps({"command": "unlock", "source": "admin"}))
@@ -152,6 +177,15 @@ class AdminControlPanel:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.status_label.config(text="Access Denied - Door Locked", fg="red")
         
+        # Ensure door status indicator shows locked
+        self.door_status.config(text="🔒 DOOR LOCKED", fg="red")
+        
+        # Update emergency status
+        self.emergency_status.config(
+            text="⚠️ EMERGENCY SERVICES CONTACTED",
+            fg="red"
+        )
+        
         # Send lockdown command with admin source
         self.mqtt_client.publish("smartlock/control",
                                json.dumps({"command": "lockdown", "source": "admin"}))
@@ -163,7 +197,7 @@ class AdminControlPanel:
                                    "message": f"Unknown user denied by admin at {timestamp}"
                                }))
         
-        messagebox.showinfo("Access Denied", "Access has been denied. Door remains locked.")
+        messagebox.showinfo("Access Denied", "Access has been denied. Emergency services have been contacted.")
         
         # Reset status after 3 seconds
         self.window.after(3000, lambda: self.status_label.config(text="System Ready", fg="black"))
