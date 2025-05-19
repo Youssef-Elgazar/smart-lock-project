@@ -16,9 +16,11 @@ MESSAGE_INTERVAL = 60  # 1 minute interval for all log types
 
 def on_connect(client, userdata, flags, rc):
     print("Connected to MQTT broker")
-    client.subscribe("smartlock/access")
-    client.subscribe("smartlock/system")
-    client.subscribe("smartlock/control")
+    client.subscribe([
+        ("smartlock/access", 2),  # Access events - QoS 2
+        ("smartlock/system", 2),  # System logs - QoS 2
+        ("smartlock/control", 2)   # Control commands - QoS 2
+    ])
 
 def on_message(client, userdata, msg):
     try:
@@ -39,7 +41,7 @@ def on_message(client, userdata, msg):
                     "name": data['user'],
                     "status": "granted",
                     "timestamp": timestamp
-                }))
+                }), qos=2)  # Events - QoS 2
             else:
                 # Rate limiting for unknown user logs
                 if current_time - last_message_times["unknown_user"] >= MESSAGE_INTERVAL:

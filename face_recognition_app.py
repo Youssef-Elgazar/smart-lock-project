@@ -54,9 +54,9 @@ class MQTTClient:
         try:
             self.client.connect("localhost", 1883)
             self.client.subscribe([
-                ("smartlock/events", 0), 
-                ("smartlock/control", 0),
-                ("smartlock/admin_action", 0)  # New subscription for admin actions
+                ("smartlock/events", 2),  # Critical events - QoS 2
+                ("smartlock/control", 2),  # Control commands - QoS 2 
+                ("smartlock/admin_action", 2)  # Admin actions - QoS 2
             ])
             self.client.on_message = self.on_message
             print("Connected to MQTT broker")
@@ -141,7 +141,7 @@ class FaceRecognition:
                     "authorized": True,
                     "user": recognized_name,
                     "timestamp": timestamp
-                })
+                }), qos=2  # Critical access events - QoS 2
             )
             # Update lock status
             st.session_state.is_locked = False
@@ -152,7 +152,7 @@ class FaceRecognition:
                     "authorized": False,
                     "user": "Unknown",
                     "timestamp": timestamp
-                })
+                }), qos=2  # Failed access attempts - QoS 2
             )
             # Keep lock status locked
             st.session_state.is_locked = True
@@ -199,7 +199,7 @@ def main():
             try:
                 _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
                 jpg_as_text = base64.b64encode(buffer).decode('utf-8')
-                mqtt_client.client.publish("smartlock/camera", jpg_as_text)
+                mqtt_client.client.publish("smartlock/camera", jpg_as_text, qos=1)  # Camera frames - QoS 1
             except Exception as e:
                 print(f"Error publishing camera frame: {e}")
 

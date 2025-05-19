@@ -23,7 +23,9 @@ class AdminControlPanel:
         self.mqtt_client = mqtt.Client(client_id="AdminPanel")
         try:
             self.mqtt_client.connect("localhost", 1883)
-            self.mqtt_client.subscribe("smartlock/camera")  # Subscribe to camera feed
+            self.mqtt_client.subscribe([
+                ("smartlock/camera", 1),  # Camera feed - QoS 1
+            ])
             self.mqtt_client.on_message = self.on_message
             self.mqtt_client.loop_start()
             print("Connected to MQTT broker")
@@ -161,14 +163,15 @@ class AdminControlPanel:
         
         # Send unlock command with admin source
         self.mqtt_client.publish("smartlock/control", 
-                               json.dumps({"command": "unlock", "source": "admin"}))
+                               json.dumps({"command": "unlock", "source": "admin"}),
+                               qos=2)  # Control commands - QoS 2
         
         # Log the action
         self.mqtt_client.publish("smartlock/system",
                                json.dumps({
                                    "type": "log",
                                    "message": f"Unknown user allowed by admin at {timestamp}"
-                               }))
+                               }), qos=2)  # System logs - QoS 2
         
         # Reset status after 3 seconds
         self.window.after(3000, lambda: self.status_label.config(text="System Ready", fg="black"))
@@ -188,14 +191,15 @@ class AdminControlPanel:
         
         # Send lockdown command with admin source
         self.mqtt_client.publish("smartlock/control",
-                               json.dumps({"command": "lockdown", "source": "admin"}))
+                               json.dumps({"command": "lockdown", "source": "admin"}),
+                               qos=2)  # Emergency commands - QoS 2
         
         # Log the action
         self.mqtt_client.publish("smartlock/system",
                                json.dumps({
                                    "type": "log",
                                    "message": f"Unknown user denied by admin at {timestamp}"
-                               }))
+                               }), qos=2)  # System logs - QoS 2
         
         messagebox.showinfo("Access Denied", "Access has been denied. Emergency services have been contacted.")
         
