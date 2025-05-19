@@ -178,10 +178,10 @@ def main():
         st.session_state.camera_running = False
 
     # Display lock status in the UI
-    if st.session_state.is_locked:
-        col2.error("🔒 DOOR LOCKED")
-    else:
-        col2.success("🔓 DOOR UNLOCKED")
+    # if st.session_state.is_locked:
+    #     col2.error("🔒 DOOR LOCKED")
+    # else:
+    #     col2.success("🔓 DOOR UNLOCKED")
         
     # Display emergency mode warning if active
     if st.session_state.emergency_mode:
