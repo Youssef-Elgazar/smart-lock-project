@@ -11,8 +11,7 @@ import paho.mqtt.client as mqtt
 import json
 import base64
 import threading
-# For PC buzzer sound simulation
-import winsound
+from playsound import playsound
 
 st.set_page_config(layout="wide")
 
@@ -37,14 +36,11 @@ if 'is_locked' not in st.session_state:
 if 'emergency_mode' not in st.session_state:
     st.session_state.emergency_mode = False
 
-# Function to simulate buzzer on PC
 def sound_alarm(duration=1000, frequency=800):
     """Simulate alarm sound on PC"""
     try:
-        # Windows-specific sound (duration in ms, freq in Hz)
-        winsound.Beep(frequency, duration)
+        playsound('./assets/beep.mp3')
     except:
-        # Fallback for non-Windows systems
         print("ALARM SOUND: Cannot play on this system")
 
 class MQTTClient:
@@ -54,12 +50,12 @@ class MQTTClient:
         try:
             self.client.connect("localhost", 1883)
             self.client.subscribe([
-                ("smartlock/events", 2),  # Critical events - QoS 2
-                ("smartlock/control", 2),  # Control commands - QoS 2 
-                ("smartlock/admin_action", 2)  # Admin actions - QoS 2
+                ("smartlock/events", 0),
+                ("smartlock/control", 0),
+                ("smartlock/admin_action", 0)
             ])
             self.client.on_message = self.on_message
-            print("Connected to MQTT broker")
+            print("WebApp MQTT client connected to broker")
         except ConnectionRefusedError:
             st.error("Failed to connect to MQTT broker. Is the broker running?")
             print("Failed to connect to MQTT broker. Is Mosquitto running?")
@@ -74,23 +70,19 @@ class MQTTClient:
                     if data["command"] == "unlock":
                         st.session_state.admin_message = "✅ Access Allowed by Admin"
                         st.session_state.is_locked = False
-                        # Reset emergency mode if it was active
                         st.session_state.emergency_mode = False
                     elif data["command"] == "lockdown":
                         st.session_state.admin_message = "❌ Access Denied by Admin. Contacting emergency services."
                         st.session_state.is_locked = True
                         st.session_state.emergency_mode = True
-                        # Sound the alarm
                         threading.Thread(target=sound_alarm, args=(2000, 1000)).start()
             elif msg.topic == "smartlock/admin_action":
-                # Handle admin actions from system_logs
                 if data["action"] == "allowed":
                     st.session_state.admin_action = {
                         "message": data["message"] if "message" in data else "✅ Access Allowed by Admin",
                         "timestamp": data["timestamp"]
                     }
                     st.session_state.is_locked = False
-                    # Reset emergency mode if it was active
                     st.session_state.emergency_mode = False
                 elif data["action"] == "denied":
                     st.session_state.admin_action = {
@@ -99,7 +91,6 @@ class MQTTClient:
                     }
                     st.session_state.is_locked = True
                     st.session_state.emergency_mode = True
-                    # Sound the alarm
                     threading.Thread(target=sound_alarm, args=(2000, 1000)).start()
         except Exception as e:
             st.error(f"Error processing MQTT message: {str(e)}")
@@ -130,32 +121,46 @@ recognizer, label_map, face_cascade = load_recognizer()
 class FaceRecognition:
     def __init__(self):
         self.mqtt_client = mqtt.Client("FaceRecognition")
-        self.mqtt_client.connect("localhost", 1883)
+        try:
+            self.mqtt_client.connect("localhost", 1883)
+            print("✓ FaceRecognition MQTT client connected")
+        except Exception as e:
+            print(f"✗ Failed to connect FaceRecognition MQTT: {e}")
+        self.last_published_name = None
+        self.last_published_time = 0
+        self.publish_cooldown = 3
         
-    def recognize_face(self, face_img, recognized_name, is_recognized):
-        timestamp = datetime.datetime.now().isoformat()
-        if is_recognized:
-            self.mqtt_client.publish("smartlock/access", 
-                json.dumps({
+    def recognize_face(self, recognized_name, is_recognized):
+        current_time = time.time()
+        
+        # Only publish if it's a different person or enough time has passed
+        if (recognized_name != self.last_published_name or 
+            current_time - self.last_published_time >= self.publish_cooldown):
+            
+            timestamp = datetime.datetime.now().isoformat()
+            if is_recognized:
+                message = json.dumps({
                     "type": "access",
                     "authorized": True,
                     "user": recognized_name,
                     "timestamp": timestamp
-                }), qos=2  # Critical access events - QoS 2
-            )
-            # Update lock status
-            st.session_state.is_locked = False
-        else:
-            self.mqtt_client.publish("smartlock/access", 
-                json.dumps({
+                })
+                print(f"📤 Publishing authorized access for: {recognized_name}")
+                self.mqtt_client.publish("smartlock/access", message, qos=0)
+                st.session_state.is_locked = False
+            else:
+                message = json.dumps({
                     "type": "access",
                     "authorized": False,
                     "user": "Unknown",
                     "timestamp": timestamp
-                }), qos=2  # Failed access attempts - QoS 2
-            )
-            # Keep lock status locked
-            st.session_state.is_locked = True
+                })
+                print(f"📤 Publishing unauthorized access attempt")
+                self.mqtt_client.publish("smartlock/access", message, qos=0)
+                st.session_state.is_locked = True
+            
+            self.last_published_name = recognized_name
+            self.last_published_time = current_time
         
     def cleanup(self):
         self.mqtt_client.disconnect()
@@ -176,14 +181,7 @@ def main():
         st.session_state.camera_running = True
     if stop_button:
         st.session_state.camera_running = False
-
-    # Display lock status in the UI
-    # if st.session_state.is_locked:
-    #     col2.error("🔒 DOOR LOCKED")
-    # else:
-    #     col2.success("🔓 DOOR UNLOCKED")
         
-    # Display emergency mode warning if active
     if st.session_state.emergency_mode:
         st.error("⚠️ EMERGENCY MODE ACTIVE - Security has been notified")
 
@@ -199,7 +197,7 @@ def main():
             try:
                 _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
                 jpg_as_text = base64.b64encode(buffer).decode('utf-8')
-                mqtt_client.client.publish("smartlock/camera", jpg_as_text, qos=1)  # Camera frames - QoS 1
+                mqtt_client.client.publish("smartlock/camera", jpg_as_text, qos=0)
             except Exception as e:
                 print(f"Error publishing camera frame: {e}")
 
@@ -231,13 +229,15 @@ def main():
                 cv2.rectangle(rgb_frame, (x_new, y_new), (x_new + size, y_new + size), (0, 255, 0), 2)
                 cv2.putText(rgb_frame, recognized_name, (x_new, y_new - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-            face_recognition.recognize_face(frame, recognized_name, is_recognized)
+            # Publish face recognition result via MQTT
+            if recognized_name is not None:
+                face_recognition.recognize_face(recognized_name, is_recognized)
 
             camera_placeholder.image(rgb_frame, channels="RGB", use_container_width=True, caption="Live Camera Feed")
             
             # Check for admin actions first
             if st.session_state.admin_action:
-                feedback_placeholder.empty()  # Clear previous messages
+                feedback_placeholder.empty()
                 if "Allowed" in st.session_state.admin_action["message"]:
                     feedback_placeholder.success(st.session_state.admin_action["message"])
                 else:
@@ -253,19 +253,17 @@ def main():
                     current_time = time.time()
                     if st.session_state.unknown_timeout_until is None:
                         feedback_placeholder.error("❌ Face not recognized - Contacting admin...")
-                        st.session_state.unknown_timeout_until = current_time + 60  # 60 second timeout
+                        st.session_state.unknown_timeout_until = current_time + 60
                     elif current_time < st.session_state.unknown_timeout_until:
-                        # Don't show error during timeout, show waiting message instead
                         remaining_time = int(st.session_state.unknown_timeout_until - current_time)
                         feedback_placeholder.warning(f"⏳ Waiting for admin response... ({remaining_time}s)")
                     else:
-                        # Timeout expired, show error again
                         feedback_placeholder.error("❌ Face not recognized - Contacting admin...")
                         st.session_state.unknown_timeout_until = current_time + 60
 
             # Check for legacy admin message (keeping for compatibility)
             if st.session_state.admin_message:
-                feedback_placeholder.empty()  # Clear previous messages
+                feedback_placeholder.empty()
                 if "Allowed" in st.session_state.admin_message:
                     feedback_placeholder.success(st.session_state.admin_message)
                 else:
